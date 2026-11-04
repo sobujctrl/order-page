@@ -1,0 +1,96 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: Default deny all unhandled collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Admin Verification: Strictly bounded to sobujbd679@gmail.com with verified email
+    function isAdmin() {
+      return isSignedIn() &&
+        request.auth.token.email.lower() == 'sobujbd679@gmail.com' &&
+        request.auth.token.email_verified == true;
+    }
+
+    // Validate Product payload
+    function isValidProduct(data) {
+      return data.nameBn is string && data.nameBn.size() > 0 && data.nameBn.size() <= 200 &&
+        data.category is string && data.category.size() <= 100 &&
+        data.price is number && data.price > 0 &&
+        data.image is string && data.image.size() <= 1000 &&
+        data.stock is number && data.stock >= 0;
+    }
+
+    // Validate Order payload
+    function isValidOrder(data) {
+      return data.customerName is string && data.customerName.size() >= 2 && data.customerName.size() <= 100 &&
+        data.phone is string && data.phone.size() >= 11 && data.phone.size() <= 15 &&
+        data.address is string && data.address.size() >= 5 && data.address.size() <= 500 &&
+        data.total is number && data.total > 0 &&
+        data.items is list && data.items.size() > 0 && data.items.size() <= 50;
+    }
+
+    // 1. Products Collection:
+    // Public read for everyone (customers & visitors).
+    // Write/Edit/Delete strictly limited to Admin (sobujbd679@gmail.com).
+    match /products/{productId} {
+      allow read: if true;
+      allow create: if isAdmin() && isValidId(productId) && isValidProduct(incoming());
+      allow update: if isAdmin() && isValidId(productId) && isValidProduct(incoming());
+      allow delete: if isAdmin() && isValidId(productId);
+    }
+
+    // 2. Categories Collection:
+    // Public read for all visitors. Write strictly limited to Admin.
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin() && isValidId(categoryId);
+    }
+
+    // 3. Orders Collection:
+    // Customers can place a new order (create).
+    // Customers CANNOT read other people's orders!
+    // Listing and managing all orders is strictly restricted to Admin (sobujbd679@gmail.com).
+    match /orders/{orderId} {
+      // Create: Anyone (guest or authenticated) can submit a new order
+      allow create: if isValidId(orderId) && isValidOrder(incoming());
+
+      // Get (single document): Only Admin or the authenticated customer who owns this order
+      allow get: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+
+      // List (all orders): ONLY Admin can list or query orders. Prevents customer data scraping.
+      allow list: if isAdmin();
+
+      // Update / Status change: ONLY Admin can update order status or details
+      allow update: if isAdmin() && isValidId(orderId);
+
+      // Delete: ONLY Admin can delete an order
+      allow delete: if isAdmin() && isValidId(orderId);
+    }
+
+    // 4. Store Settings Collection:
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

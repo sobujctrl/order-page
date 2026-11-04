@@ -1,0 +1,6 @@
+{
+  "name": "E-commerce",
+  "description": "Modern, professional Bangladeshi e-commerce platform with Bengali UI, BDT (৳) pricing, Cash on Delivery, cart checkout, and admin dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
